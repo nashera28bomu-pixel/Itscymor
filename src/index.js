@@ -11,7 +11,7 @@ const logger = pino({ level: 'silent' });
 const OWNER_NUMBER = process.env.OWNER_NUMBER?.replace(/\D/g, ''); // strip + and spaces
 const PORT = process.env.PORT || 3000;
 
-// Render needs an open port within 60s or it restarts the service
+// Render Web Service needs an open port or it kills the instance
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Cymor Bot Running');
@@ -43,8 +43,9 @@ async function startCymor() {
     logger,
     browser: ['Chrome (Linux)', 'Chrome', '124.0.0.0'],
     generateHighQualityLinkPreview: true,
-    connectTimeoutMs: 60000,
+    connectTimeoutMs: 90000,        // Render is slow, give it 90s
     keepAliveIntervalMs: 10000,
+    retryRequestDelayMs: 1000,
   });
 
   sock.ev.on('connection.update', async (update) => {
@@ -53,17 +54,18 @@ async function startCymor() {
     if (connection === 'connecting') {
       console.log('🔌 Connecting to WhatsApp...');
 
-      // Request pairing code only once per session
+      // Only request code once, and wait longer for Render cold start
       if (!pairingRequested && !state.creds.registered && OWNER_NUMBER) {
         pairingRequested = true;
         try {
-          await new Promise(r => setTimeout(r, 3000));
+          await new Promise(r => setTimeout(r, 8000)); // 8s delay
           const code = await sock.requestPairingCode(OWNER_NUMBER);
           const formatted = code?.match(/.{1,4}/g)?.join('-') || code;
           console.log(`\n🔑 YOUR PAIRING CODE: ${formatted}`);
-          console.log('Go to WhatsApp > Linked Devices > Link with phone number and enter it within 30s\n');
+          console.log('Enter this NOW in WhatsApp > Linked Devices > Link with phone number. Expires in 30s\n');
         } catch (err) {
           console.error('❌ Pairing Error:', err.message);
+          pairingRequested = false; // allow retry on next connect
         }
       }
     }
@@ -78,14 +80,18 @@ async function startCymor() {
       const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== DisconnectReason.badSession;
 
+      // If we were pairing, wait longer before reconnect to avoid killing it mid-code
+      const delay = pairingRequested ? 10000 : 3000;
+      
       if (shouldReconnect) {
-        console.log('🔄 Connection closed, reconnecting in 3s...');
+        console.log(`🔄 Connection closed, reconnecting in ${delay/1000}s...`);
         setTimeout(() => {
           reconnecting = false;
+          pairingRequested = false;
           startCymor();
-        }, 3000);
+        }, delay);
       } else {
-        console.log('🚫 Logged out. Delete auth_info folder and restart.');
+        console.log('🚫 Logged out. Delete auth_info folder on Render and restart.');
         process.exit(1);
       }
     }
