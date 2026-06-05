@@ -28,93 +28,69 @@ async function startCymor() {
     },
     printQRInTerminal: false,
     logger,
-    // Using a more standard desktop browser identity to improve connection stability
-    browser: ['Chrome', 'Windows', '114.0.5735.198'], 
+    // Canonical browser identity to bypass handshake rejections
+    browser: ['Chrome (Linux)', 'Chrome', '124.0.0.0'],
     generateHighQualityLinkPreview: true,
   });
 
-  // ── Connection Updates ────────────────────────────────────────
   sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect, qr } = update;
+    const { connection, lastDisconnect } = update;
 
     if (connection === 'connecting') {
       console.log('🔌 Connecting to WhatsApp...');
-      
-      // Request pairing code only when connecting and not registered
-      if (!sock.authState.creds.registered) {
-        try {
-          // Small delay to ensure socket is ready
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          const code = await sock.requestPairingCode(OWNER_NUMBER);
-          
-          console.log('\n╔══════════════════════════════╗');
-          console.log('║   🔑  YOUR PAIRING CODE      ║');
-          console.log('╠══════════════════════════════╣');
-          console.log(`║        ${code}        ║`);
-          console.log('╚══════════════════════════════╝');
-          console.log('\n📌 Steps:');
-          console.log('  1. Open WhatsApp > Linked Devices > Link a Device');
-          console.log('  2. Tap "Link with phone number instead"');
-          console.log(`  3. Enter: ${code}\n`);
-        } catch (err) {
-          console.error('❌ Failed to get pairing code:', err.message);
-        }
-      }
+    }
+
+    if (connection === 'open') {
+      console.log('\n✅ CYMOR BOT IS ONLINE!\n');
+      startKeepAlive();
     }
 
     if (connection === 'close') {
       const shouldReconnect = new Boom(lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-      console.log('\n⚠️  Connection closed.');
       
       if (shouldReconnect) {
-        console.log('🔄 Reconnecting in 5 seconds...\n');
-        setTimeout(startCymor, 5000);
+        console.log('🔄 Reconnecting...');
+        startCymor();
       } else {
-        console.log('🚫 Logged out. Delete auth_info folder and restart.\n');
+        console.log('🚫 Logged out. Delete auth_info and restart.');
         process.exit(1);
       }
     }
 
-    if (connection === 'open') {
-      console.log('\n╔═══════════════════════════════════════╗');
-      console.log('║   ✅  CYMOR BOT IS ONLINE!             ║');
-      console.log('╚═══════════════════════════════════════╝\n');
-      startKeepAlive();
+    // Handle pairing logic after connection reaches 'connecting' state
+    if (connection === 'connecting' && !sock.authState.creds.registered) {
+      setTimeout(async () => {
+        try {
+          const code = await sock.requestPairingCode(OWNER_NUMBER);
+          console.log('\n🔑 YOUR PAIRING CODE:', code);
+        } catch (err) {
+          console.error('❌ Pairing Error:', err.message);
+        }
+      }, 5000); // 5-second delay to ensure socket stability
     }
   });
 
   sock.ev.on('creds.update', saveCreds);
 
-  // ── Incoming Messages ─────────────────────────────────────────
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
-
     for (const msg of messages) {
       if (!msg.message || msg.key.fromMe) continue;
-
       const from = msg.key.remoteJid;
       const isGroup = from.endsWith('@g.us');
       const sender = isGroup ? msg.key.participant : from;
       const senderNumber = sender?.replace('@s.whatsapp.net', '');
-
-      const body = msg.message?.conversation || 
-                   msg.message?.extendedTextMessage?.text || 
-                   msg.message?.imageMessage?.caption || '';
+      const body = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
 
       if (!body.startsWith('.')) continue;
 
       try {
-        await commandRouter(sock, msg, {
-          from, sender, senderNumber, body, isGroup,
-          isOwner: senderNumber === OWNER_NUMBER,
-        });
+        await commandRouter(sock, msg, { from, sender, senderNumber, body, isGroup, isOwner: senderNumber === OWNER_NUMBER });
       } catch (err) {
-        console.error('❌ Command error:', err.message);
+        console.error('❌ Command Error:', err.message);
       }
     }
   });
-
-  return sock;
 }
 
 startCymor().catch(console.error);
