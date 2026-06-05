@@ -1,0 +1,21 @@
+{
+  "name": "cymor-football-analyzer-bot",
+  "version": "1.0.0",
+  "description": "Cymor Football Analyzer Bot - AI-powered WhatsApp football bot",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.9",
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "mongoose": "^8.4.1",
+    "node-cache": "^5.1.2",
+    "pino": "^9.2.0",
+    "pino-pretty": "^11.2.1",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
