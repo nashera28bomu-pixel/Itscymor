@@ -7,15 +7,13 @@ import { connectDB } from './utils/database.js';
 import { startKeepAlive } from './utils/keepAlive.js';
 
 const logger = pino({ level: 'silent' });
-const OWNER_NUMBER = process.env.OWNER_NUMBER || '254113821327';
+const OWNER_NUMBER = process.env.OWNER_NUMBER?.replace(/\D/g, ''); // strip + and spaces
 
 async function startCymor() {
-  console.log(`
-╔═══════════════════════════════════════╗
+  console.log(`╔═══════════════╗
 ║      ⚽  CYMOR FOOTBALL ANALYZER      ║
 ║           Starting Bot v1.0 🤖        ║
-╚═══════════════════════════════════════╝
-  `);
+╚═══════════════╝`);
 
   await connectDB();
 
@@ -28,16 +26,30 @@ async function startCymor() {
     },
     printQRInTerminal: false,
     logger,
-    // Canonical browser identity to bypass handshake rejections
     browser: ['Chrome (Linux)', 'Chrome', '124.0.0.0'],
     generateHighQualityLinkPreview: true,
   });
+
+  let pairingRequested = false; // prevent multiple requests
 
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
 
     if (connection === 'connecting') {
       console.log('🔌 Connecting to WhatsApp...');
+
+      // Only request code once, and only if not registered
+      if (!pairingRequested && !state.creds.registered && OWNER_NUMBER) {
+        pairingRequested = true;
+        try {
+          await new Promise(r => setTimeout(r, 3000)); // wait for socket ready
+          const code = await sock.requestPairingCode(OWNER_NUMBER);
+          console.log('\n🔑 YOUR PAIRING CODE:', code.match(/.{1,4}/g)?.join('-') || code);
+          console.log('Enter this in WhatsApp > Linked Devices > Link with phone number\n');
+        } catch (err) {
+          console.error('❌ Pairing Error:', err.message);
+        }
+      }
     }
 
     if (connection === 'open') {
@@ -46,27 +58,16 @@ async function startCymor() {
     }
 
     if (connection === 'close') {
-      const shouldReconnect = new Boom(lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-      
+      const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
+      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+
       if (shouldReconnect) {
         console.log('🔄 Reconnecting...');
-        startCymor();
+        setTimeout(startCymor, 2000); // delay to avoid tight loop
       } else {
         console.log('🚫 Logged out. Delete auth_info and restart.');
         process.exit(1);
       }
-    }
-
-    // Handle pairing logic after connection reaches 'connecting' state
-    if (connection === 'connecting' && !sock.authState.creds.registered) {
-      setTimeout(async () => {
-        try {
-          const code = await sock.requestPairingCode(OWNER_NUMBER);
-          console.log('\n🔑 YOUR PAIRING CODE:', code);
-        } catch (err) {
-          console.error('❌ Pairing Error:', err.message);
-        }
-      }, 5000); // 5-second delay to ensure socket stability
     }
   });
 
