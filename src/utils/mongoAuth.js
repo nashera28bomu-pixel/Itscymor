@@ -9,44 +9,61 @@ const sessionSchema = new mongoose.Schema({
 const Session = mongoose.models.Session || mongoose.model('Session', sessionSchema);
 
 export async function useMongoDBAuthState() {
-  const SESSION_ID = 'cymor-bot-session';
-
   const writeData = async (data, id) => {
     try {
+      // Helper to handle Buffers and BigInts for MongoDB compatibility
+      const serializedData = JSON.parse(JSON.stringify(data, (key, value) => {
+        if (value instanceof Buffer) return { type: 'Buffer', data: Array.from(value) };
+        if (typeof value === 'bigint') return value.toString();
+        return value;
+      }));
+
       await Session.findByIdAndUpdate(
         id,
-        { data: JSON.parse(JSON.stringify(data, (_, v) => (typeof v === 'bigint' ? v.toString() : v))) },
+        { data: serializedData },
         { upsert: true }
       );
     } catch (err) {
-      console.error('Error saving to MongoDB:', err);
+      console.error(`Error saving ${id} to MongoDB:`, err);
     }
   };
 
   const readData = async (id) => {
     try {
       const doc = await Session.findById(id);
-      return doc ? doc.data : null;
+      if (!doc) return null;
+      
+      // Helper to restore Buffers
+      return JSON.parse(JSON.stringify(doc.data), (key, value) => {
+        if (value && value.type === 'Buffer') return Buffer.from(value.data);
+        return value;
+      });
     } catch (err) {
-      console.error('Error reading from MongoDB:', err);
+      console.error(`Error reading ${id} from MongoDB:`, err);
       return null;
     }
   };
 
   // Load existing state
-  const creds = (await readData('creds')) || {
-    noiseKey: { public: Buffer.alloc(0), private: Buffer.alloc(0) },
-    signedIdentityKey: { public: Buffer.alloc(0), private: Buffer.alloc(0) },
-    signedPreKey: { keyId: 0, keySignature: Buffer.alloc(0), publicKey: Buffer.alloc(0) },
-    registrationId: 0,
-    advSecretKey: '',
-    processedHistoryMessages: [],
-    nextPreKeyId: 1,
-    firstUnuploadedPreKeyId: 1,
-    accountSettings: {},
-    registered: false,
-    pairingCode: null,
-  };
+  let creds = await readData('creds');
+
+  // If no creds found, initialize defaults
+  if (!creds) {
+    creds = {
+      noiseKey: { public: Buffer.alloc(0), private: Buffer.alloc(0) },
+      signedIdentityKey: { public: Buffer.alloc(0), private: Buffer.alloc(0) },
+      signedPreKey: { keyId: 0, keySignature: Buffer.alloc(0), publicKey: Buffer.alloc(0) },
+      registrationId: 0,
+      advSecretKey: '',
+      processedHistoryMessages: [],
+      nextPreKeyId: 1,
+      firstUnuploadedPreKeyId: 1,
+      accountSettings: {},
+      registered: false,
+      pairingCode: null,
+    };
+    await writeData(creds, 'creds');
+  }
 
   return {
     state: {
