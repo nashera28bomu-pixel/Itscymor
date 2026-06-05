@@ -9,7 +9,7 @@ export async function menuCommand(sock, msg, ctx) {
 ║      Version 1.0 🤖       ║
 ╚═══════════════════════════╝
 
-👋 Mambo! Welcome to *Cymor*
+👋 Mambo! Welcome to *Cymor Football Analyzer*
 Your Ultimate Football Brain!
 🕐 ${time} EAT
 
