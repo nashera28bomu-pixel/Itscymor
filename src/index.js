@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import http from 'http';
 import { makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
@@ -8,8 +9,21 @@ import { startKeepAlive } from './utils/keepAlive.js';
 
 const logger = pino({ level: 'silent' });
 const OWNER_NUMBER = process.env.OWNER_NUMBER?.replace(/\D/g, ''); // strip + and spaces
+const PORT = process.env.PORT || 3000;
+
+// Render needs an open port within 60s or it restarts the service
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Cymor Bot Running');
+}).listen(PORT, () => console.log(`🌐 Health server listening on ${PORT}`));
+
+let sock;
+let reconnecting = false;
 
 async function startCymor() {
+  if (reconnecting) return;
+  reconnecting = true;
+
   console.log(`╔═══════════════╗
 ║      ⚽  CYMOR FOOTBALL ANALYZER      ║
 ║           Starting Bot v1.0 🤖        ║
@@ -18,8 +32,9 @@ async function startCymor() {
   await connectDB();
 
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+  let pairingRequested = false;
 
-  const sock = makeWASocket({
+  sock = makeWASocket({
     auth: {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, logger),
@@ -28,9 +43,9 @@ async function startCymor() {
     logger,
     browser: ['Chrome (Linux)', 'Chrome', '124.0.0.0'],
     generateHighQualityLinkPreview: true,
+    connectTimeoutMs: 60000,
+    keepAliveIntervalMs: 10000,
   });
-
-  let pairingRequested = false; // prevent multiple requests
 
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
@@ -38,14 +53,15 @@ async function startCymor() {
     if (connection === 'connecting') {
       console.log('🔌 Connecting to WhatsApp...');
 
-      // Only request code once, and only if not registered
+      // Request pairing code only once per session
       if (!pairingRequested && !state.creds.registered && OWNER_NUMBER) {
         pairingRequested = true;
         try {
-          await new Promise(r => setTimeout(r, 3000)); // wait for socket ready
+          await new Promise(r => setTimeout(r, 3000));
           const code = await sock.requestPairingCode(OWNER_NUMBER);
-          console.log('\n🔑 YOUR PAIRING CODE:', code.match(/.{1,4}/g)?.join('-') || code);
-          console.log('Enter this in WhatsApp > Linked Devices > Link with phone number\n');
+          const formatted = code?.match(/.{1,4}/g)?.join('-') || code;
+          console.log(`\n🔑 YOUR PAIRING CODE: ${formatted}`);
+          console.log('Go to WhatsApp > Linked Devices > Link with phone number and enter it within 30s\n');
         } catch (err) {
           console.error('❌ Pairing Error:', err.message);
         }
@@ -54,18 +70,22 @@ async function startCymor() {
 
     if (connection === 'open') {
       console.log('\n✅ CYMOR BOT IS ONLINE!\n');
+      reconnecting = false;
       startKeepAlive();
     }
 
     if (connection === 'close') {
       const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+      const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== DisconnectReason.badSession;
 
       if (shouldReconnect) {
-        console.log('🔄 Reconnecting...');
-        setTimeout(startCymor, 2000); // delay to avoid tight loop
+        console.log('🔄 Connection closed, reconnecting in 3s...');
+        setTimeout(() => {
+          reconnecting = false;
+          startCymor();
+        }, 3000);
       } else {
-        console.log('🚫 Logged out. Delete auth_info and restart.');
+        console.log('🚫 Logged out. Delete auth_info folder and restart.');
         process.exit(1);
       }
     }
@@ -94,4 +114,7 @@ async function startCymor() {
   });
 }
 
-startCymor().catch(console.error);
+startCymor().catch(err => {
+  console.error('Fatal error:', err);
+  process.exit(1);
+});
