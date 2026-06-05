@@ -21,7 +21,7 @@ export async function picksCommand(sock, msg, ctx) {
 
     if (fixtures.length === 0) {
       return sock.sendMessage(from, {
-        text: `😅 *No matches today!*\n\nHapana games leo bana.\nTry *.tomorrow* or *.weekend*\n\n_Powered by Cymor 🤖_`,
+        text: `😅 *No matches today!*\n\nHakuna games leo bana.\nTry *.tomorrow* or *.weekend*\n\n_Powered by Cymor 🤖_`,
       });
     }
 
