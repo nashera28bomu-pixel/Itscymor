@@ -10,7 +10,7 @@ const logger = pino({ level: 'silent' });
 const OWNER_NUMBER = process.env.OWNER_NUMBER || '254113821327';
 const PORT = process.env.PORT || 3000;
 
-// ── HTTP server starts immediately so Render doesn't kill the process ──
+// ── HTTP server (Railway requires a bound port) ───────────────────────
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({
@@ -21,20 +21,11 @@ const server = http.createServer((req, res) => {
   }));
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`🌐 HTTP server listening on port ${PORT}`);
 });
 
-// ── Keep-alive self ping every 14 mins ───────────────────────────────
-if (process.env.RENDER_URL) {
-  setInterval(() => {
-    http.get(process.env.RENDER_URL, () => {
-      console.log(`🏓 Self-ping OK — ${new Date().toLocaleTimeString('en-KE', { timeZone: 'Africa/Nairobi' })} EAT`);
-    }).on('error', () => {});
-  }, 14 * 60 * 1000);
-}
-
-// ── Main bot ──────────────────────────────────────────────────────────
+// ── Bot ───────────────────────────────────────────────────────────────
 async function startCymor() {
   console.log(`
 ╔═══════════════════════════════════════╗
@@ -60,33 +51,34 @@ async function startCymor() {
 
   let pairingDone = false;
 
-  // ── Connection Updates ──────────────────────────────────────────────
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;
 
-    // qr event fires when socket is ready — PERFECT time to request pairing code
+    // ── Pairing code: fires when socket is ready (qr event) ──────────
     if (qr && !pairingDone && !sock.authState.creds.registered) {
       pairingDone = true;
       console.log('\n📱 PAIRING MODE ACTIVE');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log(`📞 Requesting pairing code for: +${OWNER_NUMBER}`);
+      console.log(`📞 Number: +${OWNER_NUMBER}`);
+      console.log('⏳ Requesting pairing code...\n');
 
       try {
         const code = await sock.requestPairingCode(OWNER_NUMBER);
-        console.log('\n╔══════════════════════════════════╗');
-        console.log('║   🔑  YOUR PAIRING CODE IS:       ║');
+
+        console.log('╔══════════════════════════════════╗');
+        console.log('║   🔑  YOUR PAIRING CODE:          ║');
         console.log('╠══════════════════════════════════╣');
-        console.log(`║           ${code}              ║`);
+        console.log(`║         ${code}           ║`);
         console.log('╚══════════════════════════════════╝');
-        console.log('\n📌 HOW TO LINK:');
-        console.log('  1. Open WhatsApp on your phone');
-        console.log('  2. Tap ⋮ (3 dots) → Linked Devices');
-        console.log('  3. Tap "Link a Device"');
-        console.log('  4. Tap "Link with phone number instead"');
-        console.log(`  5. Enter this code → ${code}`);
+        console.log('');
+        console.log('📌 HOW TO LINK:');
+        console.log('  1. Open WhatsApp');
+        console.log('  2. Tap ⋮ → Linked Devices');
+        console.log('  3. Link a Device');
+        console.log('  4. "Link with phone number instead"');
+        console.log(`  5. Enter: ${code}`);
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
       } catch (err) {
-        console.error('❌ Pairing code error:', err.message);
+        console.error('❌ Pairing code failed:', err.message);
         pairingDone = false;
       }
     }
@@ -96,33 +88,33 @@ async function startCymor() {
     }
 
     if (connection === 'open') {
-      console.log('\n╔═══════════════════════════════════════╗');
+      console.log('');
+      console.log('╔═══════════════════════════════════════╗');
       console.log('║   ✅  CYMOR BOT IS ONLINE!             ║');
       console.log('║   ⚽  Ready to analyze football!       ║');
-      console.log('╚═══════════════════════════════════════╝\n');
+      console.log('╚═══════════════════════════════════════╝');
+      console.log('');
     }
 
     if (connection === 'close') {
-      const code = new Boom(lastDisconnect?.error)?.output?.statusCode;
-      const shouldReconnect = code !== DisconnectReason.loggedOut;
+      const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
+      const loggedOut = statusCode === DisconnectReason.loggedOut;
 
-      console.log(`\n⚠️  Connection closed. Code: ${code}`);
+      console.log(`⚠️  Connection closed. Code: ${statusCode}`);
 
-      if (shouldReconnect) {
-        console.log('🔄 Reconnecting in 5 seconds...\n');
+      if (!loggedOut) {
+        console.log('🔄 Reconnecting in 5 seconds...');
         pairingDone = false;
         setTimeout(startCymor, 5000);
       } else {
-        console.log('🚫 Logged out. Delete auth_info folder and redeploy.\n');
+        console.log('🚫 Logged out. Delete auth_info and redeploy.');
         process.exit(1);
       }
     }
   });
 
-  // ── Save credentials ────────────────────────────────────────────────
   sock.ev.on('creds.update', saveCreds);
 
-  // ── Incoming messages ───────────────────────────────────────────────
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
 
