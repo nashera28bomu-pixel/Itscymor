@@ -18,15 +18,8 @@ export async function commandRouter(sock, msg, ctx) {
   const command = args[0].toLowerCase();
   const params = args.slice(1).join(' ');
 
-  const sendTyping = async () => {
-    await sock.sendPresenceUpdate('composing', from);
-    await new Promise((r) => setTimeout(r, 800));
-  };
-
-  await sendTyping();
-
   switch (command) {
-    // ── Main Menu ────────────────────────────────────────────────
+    // ── Main Menu ─────────────────────────────────────────────────
     case '.menu':
     case '.cymor':
     case '.start':
@@ -50,7 +43,7 @@ export async function commandRouter(sock, msg, ctx) {
     case '.predict':
       if (!params) {
         return sock.sendMessage(from, {
-          text: `❌ *Usage:* .predict [Team A] vs [Team B]\n\n*Example:*\n.predict Arsenal vs Chelsea\n\n_Powered by Cymor 🤖_`,
+          text: `❌ *Usage:* /predict [Team A] vs [Team B]\n\n*Example:*\n/predict Arsenal vs Chelsea\n\n_Powered by Cymor 🤖_`,
         });
       }
       return predictCommand(sock, msg, ctx, params);
@@ -62,7 +55,7 @@ export async function commandRouter(sock, msg, ctx) {
     case '.odds':
       if (!params) {
         return sock.sendMessage(from, {
-          text: `❌ *Usage:* .odds [Team A] vs [Team B]\n\n*Example:*\n.odds Man City vs Arsenal\n\n_Powered by Cymor 🤖_`,
+          text: `❌ *Usage:* /odds [Team A] vs [Team B]\n\n*Example:*\n/odds Man City vs Arsenal\n\n_Powered by Cymor 🤖_`,
         });
       }
       return oddsCommand(sock, msg, ctx, params);
@@ -70,7 +63,7 @@ export async function commandRouter(sock, msg, ctx) {
     case '.h2h':
       if (!params) {
         return sock.sendMessage(from, {
-          text: `❌ *Usage:* .h2h [Team A] vs [Team B]\n\n*Example:*\n.h2h Real Madrid vs Barcelona\n\n_Powered by Cymor 🤖_`,
+          text: `❌ *Usage:* /h2h [Team A] vs [Team B]\n\n*Example:*\n/h2h Real Madrid vs Barcelona\n\n_Powered by Cymor 🤖_`,
         });
       }
       return h2hCommand(sock, msg, ctx, params);
@@ -78,7 +71,7 @@ export async function commandRouter(sock, msg, ctx) {
     case '.form':
       if (!params) {
         return sock.sendMessage(from, {
-          text: `❌ *Usage:* .form [Team Name]\n\n*Example:*\n.form Liverpool\n\n_Powered by Cymor 🤖_`,
+          text: `❌ *Usage:* /form [Team Name]\n\n*Example:*\n/form Liverpool\n\n_Powered by Cymor 🤖_`,
         });
       }
       return formCommand(sock, msg, ctx, params);
@@ -116,10 +109,10 @@ export async function commandRouter(sock, msg, ctx) {
       }
       return ownerCommands(sock, msg, ctx, command, params);
 
-    // ── Unknown Command ───────────────────────────────────────────
+    // ── Unknown ───────────────────────────────────────────────────
     default:
       return sock.sendMessage(from, {
-        text: `❓ *Unknown command:* ${command}\n\nType *.menu* to see all available commands 📋\n\n_Powered by Cymor 🤖_`,
+        text: `❓ *Unknown command:* ${command}\n\nType /menu to see all available commands 📋\n\n_Powered by Cymor 🤖_`,
       });
   }
 }
