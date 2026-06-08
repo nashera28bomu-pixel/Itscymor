@@ -1,94 +1,97 @@
 import { searchTeam, getTeamForm } from '../services/footballAPI.js';
-import { utcToEAT } from '../utils/time.js';
+import { utcToEATTime } from '../utils/time.js';
+
+function getResultEmoji(fixture, teamId) {
+  const homeId = fixture.teams?.home?.id;
+  const homeGoals = fixture.goals?.home;
+  const awayGoals = fixture.goals?.away;
+
+  if (homeGoals === null || awayGoals === null) return '⏳';
+  if (homeGoals === awayGoals) return '🟡'; // Draw
+
+  const homeWon = homeGoals > awayGoals;
+  const isHome = homeId === teamId;
+
+  return (homeWon && isHome) || (!homeWon && !isHome) ? '🟢' : '🔴';
+}
 
 export async function formCommand(sock, msg, ctx, params) {
   const { from } = ctx;
 
-  await sock.sendMessage(from, {
-    text: `🔍 _Fetching form for ${params}..._`,
-  });
+  await sock.sendMessage(from, { text: `🔍 _Searching for ${params}..._` });
 
   try {
-    const teamData = await searchTeam(params);
-    const team = teamData?.response?.[0]?.team;
+    // Step 1: Search team
+    const searchData = await searchTeam(params);
+    const teams = searchData?.response;
 
-    if (!team) {
+    if (!teams || teams.length === 0) {
       return sock.sendMessage(from, {
-        text: `❌ *Team not found!*\n\nCould not find "*${params}*"\nCheck spelling and try again 😅\n\n_Powered by Cymor 🤖_`,
+        text: `❌ *Team not found:* ${params}\n\nTry full name e.g:\n/form Arsenal\n/form Real Madrid\n/form France\n\n_Powered by Cymor 🤖_`,
       });
     }
 
-    const formData = await getTeamForm(team.id, 10);
-    const fixtures = formData?.response || [];
+    const team = teams[0].team || teams[0];
+    const teamId = team.id;
+    const teamName = team.name;
 
-    if (fixtures.length === 0) {
+    await sock.sendMessage(from, { text: `📊 _Fetching form for ${teamName}..._` });
+
+    // Step 2: Get last 5 matches
+    const formData = await getTeamForm(teamId, 5);
+    const fixtures = formData?.response;
+
+    if (!fixtures || fixtures.length === 0) {
       return sock.sendMessage(from, {
-        text: `📊 No recent fixtures found for *${team.name}* 😅\n\n_Powered by Cymor 🤖_`,
+        text: `⚠️ *${teamName}*\n\nNo recent matches found.\nSeason may be on break.\n\n_Powered by Cymor 🤖_`,
       });
     }
+
+    // Step 3: Build form string
+    const formString = fixtures
+      .slice(-5)
+      .map(f => getResultEmoji(f, teamId))
+      .join(' ');
+
+    let text = `📊 *${teamName.toUpperCase()} — RECENT FORM*\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    text += `🏃 Last 5: ${formString}\n`;
+    text += `🟢 Win  🟡 Draw  🔴 Loss\n\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━━━\n`;
 
     let wins = 0, draws = 0, losses = 0;
-    let goalsFor = 0, goalsAgainst = 0;
-    const formString = [];
 
-    for (const f of fixtures) {
-      const isHome = f.teams.home.id === team.id;
-      const myGoals = isHome ? f.goals.home : f.goals.away;
-      const theirGoals = isHome ? f.goals.away : f.goals.home;
+    for (const fix of fixtures.slice(-5)) {
+      const home = fix.teams?.home?.name || 'Home';
+      const away = fix.teams?.away?.name || 'Away';
+      const hg = fix.goals?.home ?? '?';
+      const ag = fix.goals?.away ?? '?';
+      const date = new Date(fix.fixture.timestamp * 1000).toLocaleDateString('en-KE', {
+        timeZone: 'Africa/Nairobi', day: 'numeric', month: 'short',
+      });
+      const status = fix.fixture.status.short;
+      const result = getResultEmoji(fix, teamId);
 
-      goalsFor += myGoals || 0;
-      goalsAgainst += theirGoals || 0;
+      text += `${result} *${home}* ${hg}-${ag} *${away}*\n`;
+      text += `   📅 ${date} | ${status}\n\n`;
 
-      if (myGoals > theirGoals) { wins++; formString.push('🟢'); }
-      else if (myGoals < theirGoals) { losses++; formString.push('🔴'); }
-      else { draws++; formString.push('🟡'); }
+      if (result === '🟢') wins++;
+      else if (result === '🟡') draws++;
+      else if (result === '🔴') losses++;
     }
 
-    let text = `📈 *TEAM FORM — CYMOR*\n`;
-    text += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-    text += `🏟️ *${team.name}*\n`;
-    text += `📊 Last ${fixtures.length} matches\n`;
-    text += `━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-
-    text += `🔥 *FORM*\n`;
-    text += formString.join(' ') + '\n\n';
-
-    text += `📊 *SUMMARY*\n`;
-    text += `🟢 Wins: *${wins}* | 🟡 Draws: *${draws}* | 🔴 Losses: *${losses}*\n`;
-    text += `⚽ Goals For: *${goalsFor}* | Against: *${goalsAgainst}*\n`;
-    text += `📈 Avg per game: *${(goalsFor / fixtures.length).toFixed(1)}* scored, *${(goalsAgainst / fixtures.length).toFixed(1)}* conceded\n\n`;
-
-    text += `📋 *RECENT RESULTS*\n`;
-    for (const f of fixtures.slice(0, 8)) {
-      const isHome = f.teams.home.id === team.id;
-      const opponent = isHome ? f.teams.away.name : f.teams.home.name;
-      const myGoals = isHome ? f.goals.home : f.goals.away;
-      const theirGoals = isHome ? f.goals.away : f.goals.home;
-      const venue = isHome ? '🏠' : '✈️';
-      const date = utcToEAT(f.fixture.timestamp);
-
-      let result = '🟡';
-      if (myGoals > theirGoals) result = '🟢';
-      else if (myGoals < theirGoals) result = '🔴';
-
-      const scoreDisplay = isHome
-        ? `${myGoals}-${theirGoals}`
-        : `${theirGoals}-${myGoals}`;
-
-      text += `${result} ${venue} vs *${opponent}*\n`;
-      text += `   Score: ${isHome ? team.name : opponent} ${scoreDisplay} ${isHome ? opponent : team.name}\n`;
-      text += `   📅 ${date}\n`;
-    }
-
-    text += `\n━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-    text += `🟢 Win  🟡 Draw  🔴 Loss\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `📈 W:${wins} D:${draws} L:${losses} (last 5)\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+    text += `💡 /predict ${teamName} vs [opponent]\n`;
     text += `_Powered by Cymor 🤖_`;
 
     await sock.sendMessage(from, { text });
+
   } catch (err) {
     console.error('Form command error:', err.message);
     await sock.sendMessage(from, {
-      text: `❌ Error fetching form data. Try again! 😅\n\n_Powered by Cymor 🤖_`,
+      text: `❌ Error fetching form for *${params}*\nTry again! 😅\n\n_Powered by Cymor 🤖_`,
     });
   }
 }
