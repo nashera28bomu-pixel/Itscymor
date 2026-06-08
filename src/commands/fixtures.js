@@ -2,7 +2,7 @@ import { getFixturesByDate } from '../services/footballAPI.js';
 import { getEATDate, getEATTime, getAPIDate, getWeekendDates, utcToEATTime, getLeagueEmoji } from '../utils/time.js';
 
 // Priority leagues to show first (including international)
-const PRIORITY_LEAGUES = [1, 2, 3, 10, 31, 6, 29, 5, 9, 39, 140, 135, 78, 61, 253];
+const PRIORITY_LEAGUES = [1, 2, 3, 10, 31, 6, 29, 5, 9, 39, 140, 135, 78, 61, 253, 667, 668, 669, 670, 671];
 
 function sortFixtures(fixtures) {
   return fixtures.sort((a, b) => {
@@ -14,10 +14,12 @@ function sortFixtures(fixtures) {
     return a.fixture.timestamp - b.fixture.timestamp;
   });
 }
-
+const data = await getFixturesByDate(date);
+console.log('API returned:', data?.response?.length, 'fixtures');
+console.log(JSON.stringify(data?.response?.slice(0,2)));
 function buildFixturesMessage(fixtures, title, dateLabel) {
   if (!fixtures || fixtures.length === 0) {
-    return `📅 *${title}*\n━━━━━━━━━━━━━━━━━━━━━━\n\nHapana matches ${dateLabel} bana! 😅\n\n_Powered by Cymor 🤖_`;
+    return `📅 *${title}*\n━━━━━━━━━━━━━━━━━━━━━━\n\nHakuna matches ${dateLabel} bana! 😅\n\n_Powered by Cymor 🤖_`;
   }
 
   const sorted = sortFixtures(fixtures);
