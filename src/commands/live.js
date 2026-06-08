@@ -14,7 +14,7 @@ export async function liveCommand(sock, msg, ctx) {
 
     if (!fixtures || fixtures.length === 0) {
       return sock.sendMessage(from, {
-        text: `⚽ *NO LIVE MATCHES*\n━━━━━━━━━━━━━━━━━━━━━━\n\nHapana mchezo sasa hivi bana! 😅\n\nTry *.today* to see upcoming matches\nor *.tomorrow* for tomorrow's fixtures\n\n🕐 ${getEATTime()} EAT\n━━━━━━━━━━━━━━━━━━━━━━\n_Powered by Cymor 🤖_`,
+        text: `⚽ *NO LIVE MATCHES*\n━━━━━━━━━━━━━━━━━━━━━━\n\nHakuna mchezo sasa hivi bana! 😅\n\nTry *.today* to see upcoming matches\nor *.tomorrow* for tomorrow's fixtures\n\n🕐 ${getEATTime()} EAT\n━━━━━━━━━━━━━━━━━━━━━━\n_Powered by Cymor 🤖_`,
       });
     }
 
