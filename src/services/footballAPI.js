@@ -91,7 +91,13 @@ function normalizeFDMatch(match, leagueName, leagueFlag) {
 // ── Normalize worldcup26.ir match to common format ────────────────────
 function normalizeWCMatch(match) {
   const now = Date.now();
-  const matchTime = new Date(match.date).getTime();
+  // Handle various date field names and formats safely
+  const rawDate = match.date || match.utcDate || match.datetime || match.match_date || null;
+  const matchTime = rawDate ? new Date(rawDate).getTime() : null;
+
+  // Skip invalid dates
+  if (!matchTime || isNaN(matchTime)) return null;
+
   const diffMin = (now - matchTime) / 60000;
 
   let statusShort = 'NS';
@@ -102,7 +108,7 @@ function normalizeWCMatch(match) {
   return {
     fixture: {
       id: match.id || Math.random(),
-      timestamp: matchTime / 1000,
+      timestamp: matchTime / 1000, // safe, checked above
       status: { short: statusShort, elapsed: null },
     },
     league: {
@@ -127,7 +133,9 @@ async function getWorldCupFixtures() {
   try {
     const res = await wcAPI.get('/get/games');
     const games = res.data?.games || res.data || [];
-    return Array.isArray(games) ? games.map(normalizeWCMatch) : [];
+    return Array.isArray(games)
+      ? games.map(normalizeWCMatch).filter(Boolean)
+      : [];
   } catch (err) {
     console.error('⚠️ WC API failed:', err.message);
     return [];
